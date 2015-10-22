@@ -1,0 +1,85 @@
+#!/bin/bash
+
+#This script sets up a Mesos Environment with Docker
+
+MESOS_MASTER_NAME='mesos_master'
+MESOS_SLAVE_NAME='mesos_slave'
+MESOS_IP='127.0.0.1'
+MESOS_DOCKER_IMAGE_TAG='0.23.0-ubuntu-14.04'
+MESOS_MASTER_PORT='5050'
+
+if [ ! -z "$1" ]; then
+  echo "MESOS_IP=$1"
+  MESOS_IP="$1"
+else
+  echo "mesos-env IP [slave/master] [mesos_master_ip]"
+  exit 1
+fi
+
+#
+# Function for setting up a mesos-master
+#
+function setup_master
+{
+
+  CONTAINER_RUNNING=$(docker inspect -f {{.State.Running}} $MESOS_MASTER_NAME)
+
+  if [ $? -ne 0 ]; then
+    docker run -d \
+      -e MESOS_HOSTNAME=$MESOS_IP -e MESOS_IP=$MESOS_IP \
+      --name $MESOS_MASTER_NAME --net host mesoscloud/mesos-master:$MESOS_DOCKER_IMAGE_TAG > /dev/null
+      echo "Container $MESOS_MASTER_NAME created and started!"
+    else
+      if [ ! $CONTAINER_RUNNING ]; then
+        echo "$MESOS_MASTER_NAME already exists."
+        docker start $MESOS_MASTER_NAME > /dev/null
+        echo "Re-started $MESOS_MASTER_NAME container!"
+      else
+        echo "$MESOS_MASTER_NAME already running."
+      fi
+  fi
+}
+
+#
+# Function for setting up a mesos-slave
+#
+function setup_slave
+{
+
+  local MESOS_MASTER="$MESOS_IP"
+  if [ ! -z "$3" ]; then
+    echo "MESOS_MASTER=$3"
+    local MESOS_MASTER="$3"
+  fi
+
+  CONTAINER_RUNNING=$(docker inspect -f {{.State.Running}} $MESOS_SLAVE_NAME)
+
+  if [ $? -ne 0 ]; then
+    echo "No mesos-slave found."
+    docker run -d \
+      -e MESOS_MASTER=$MESOS_MASTER:$MESOS_MASTER_PORT -e MESOS_HOSTNAME=$MESOS_IP -e MESOS_IP=$MESOS_IP \
+      -v /sys/fs/cgroup:/sys/fs/cgroup -v /var/run/docker.sock:/var/run/docker.sock \
+      --name $MESOS_SLAVE_NAME --net host --privileged mesoscloud/mesos-slave:$MESOS_DOCKER_IMAGE_TAG > /dev/null
+    echo "Container $MESOS_SLAVE_NAME created and started!"
+    else
+      if [ ! $CONTAINER_RUNNING ]; then
+        echo "$MESOS_SLAVE_NAME already exists."
+        docker start $MESOS_SLAVE_NAME > /dev/null
+        echo "Re-started $MESOS_SLAVE_NAME container!"
+      else
+        echo "$MESOS_SLAVE_NAME already running."
+      fi
+  fi
+}
+
+#
+# Calls function based on params
+#
+if [ "$2" == "master" ]; then setup_master; fi
+if [ "$2" == "slave" ]; then setup_slave "$@"; fi
+
+if [ -z $2 ]
+  then
+    setup_master
+    setup_slave
+fi
